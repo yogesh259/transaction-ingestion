@@ -11,16 +11,16 @@ import java.util.Map;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
 /**
- * Default {@link LlmClient} backed by an OpenAI-style chat-completions API.
- * Sends a structured prompt, parses {@code { category, sub_category, confidence }}
- * from the response, and normalises the confidence to {@code [0,1]} with scale 2.
+ * Default {@link LlmClient} backed by a Google Gemini API.
+ * Sends a structured prompt, extracts the JSON object from the response,
+ * and parses {@code { category, sub_category, confidence }}.
+ * The client is resilient to the model wrapping the JSON in markdown or other text.
  * Any failure (missing key, timeout, malformed response) resolves to
  * {@link Optional#empty()}.
  */
@@ -29,10 +29,9 @@ public class RestClientLlmClient implements LlmClient {
 
     private static final Logger log = LoggerFactory.getLogger(RestClientLlmClient.class);
 
-    /** Confidence used when the model omits the field. */
     static final BigDecimal DEFAULT_CONFIDENCE = new BigDecimal("0.50");
 
-    private static final String SYSTEM_PROMPT = """
+    private static final String PROMPT = """
             You are a financial transaction categorisation assistant.
             Given a merchant name, respond ONLY with a compact JSON object using the keys
             "category", "sub_category" and "confidence" (a number between 0 and 1).
@@ -62,19 +61,19 @@ public class RestClientLlmClient implements LlmClient {
         if (merchantName == null || merchantName.isBlank()) {
             return Optional.empty();
         }
-        if (properties.apiKey() == null || properties.apiKey().isBlank()) {
+        String apiKey = properties.apiKey();
+        if (apiKey == null || apiKey.isBlank()) {
             log.debug("LLM api-key not configured; fallback skipped for '{}'", merchantName);
             return Optional.empty();
         }
         try {
             JsonNode response = restClient.post()
-                    .uri("/chat/completions")
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + properties.apiKey())
+                    .uri("/models/{model}:generateContent?key={key}", properties.model(), apiKey)
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(buildRequestBody(merchantName))
                     .retrieve()
                     .body(JsonNode.class);
-            return parseChatCompletion(response, objectMapper);
+            return parseGeminiResponse(response, objectMapper);
         } catch (Exception ex) {
             log.warn("LLM fallback failed for '{}': {}", merchantName, ex.getMessage());
             return Optional.empty();
@@ -83,32 +82,42 @@ public class RestClientLlmClient implements LlmClient {
 
     private Map<String, Object> buildRequestBody(String merchantName) {
         return Map.of(
-                "model", properties.model(),
-                "temperature", 0,
-                "response_format", Map.of("type", "json_object"),
-                "messages", List.of(
-                        Map.of("role", "system", "content", SYSTEM_PROMPT),
-                        Map.of("role", "user", "content", "Categorise the merchant: " + merchantName)
+                "contents", List.of(
+                        Map.of("parts", List.of(
+                                Map.of("text", String.format(PROMPT, merchantName))
+                        ))
                 )
         );
     }
 
     /**
-     * Extracts {@code { category, sub_category, confidence }} from an OpenAI-style
-     * chat-completion response, or empty when the shape is unexpected or no
-     * category is present.
+     * Extracts {@code { category, sub_category, confidence }} from a Gemini
+     * response, or empty when the shape is unexpected or no category is present.
+     * This method is designed to be resilient to the model wrapping the JSON
+     * in markdown or other surrounding text.
      */
-    static Optional<LlmCategorisation> parseChatCompletion(JsonNode response, ObjectMapper objectMapper) {
+    static Optional<LlmCategorisation> parseGeminiResponse(JsonNode response, ObjectMapper objectMapper) {
         if (response == null) {
             return Optional.empty();
         }
-        JsonNode content = response.path("choices").path(0).path("message").path("content");
+        JsonNode content = response.path("candidates").path(0).path("content").path("parts").path(0).path("text");
         if (!content.isTextual()) {
-            log.warn("Unexpected LLM response shape (no message content)");
+            log.warn("Unexpected LLM response shape (no text content)");
             return Optional.empty();
         }
         try {
-            JsonNode json = objectMapper.readTree(content.asText());
+            String textContent = content.asText();
+            
+            // The model sometimes wraps the JSON in markdown or other text, so we extract it.
+            int firstBrace = textContent.indexOf('{');
+            int lastBrace = textContent.lastIndexOf('}');
+            if (firstBrace == -1 || lastBrace == -1 || lastBrace < firstBrace) {
+                log.warn("Could not find a valid JSON object in the LLM response.");
+                return Optional.empty();
+            }
+            String jsonSubstring = textContent.substring(firstBrace, lastBrace + 1);
+
+            JsonNode json = objectMapper.readTree(jsonSubstring);
             String category = text(json, "category");
             if (category == null || category.isBlank()) {
                 return Optional.empty();
@@ -135,4 +144,3 @@ public class RestClientLlmClient implements LlmClient {
         return node.hasNonNull(field) ? node.get(field).asText() : null;
     }
 }
-

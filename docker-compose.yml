@@ -27,7 +27,6 @@ services:
       SPRING_PROFILES_ACTIVE: docker
       DB_USERNAME: app
       DB_PASSWORD: app
-      # Optional: provide an LLM key to enable the real fallback strategy.
       LLM_API_KEY: ${LLM_API_KEY:-}
     ports:
       - "8080:8080"
@@ -44,4 +43,3 @@ services:
 
 volumes:
   mysql-data:
-
