@@ -1,0 +1,20 @@
+package com.example.ingestion;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
+import org.springframework.scheduling.annotation.EnableAsync;
+
+/**
+ * Entry point for the Transaction Ingestion &amp; Rule-Based Categorisation Engine.
+ */
+@SpringBootApplication
+@EnableAsync
+@ConfigurationPropertiesScan
+public class IngestionApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(IngestionApplication.class, args);
+    }
+}
+

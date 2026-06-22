@@ -1,0 +1,16 @@
+# Normalise line endings to LF in the repository; check out with native endings.
+* text=auto
+
+# Windows scripts must keep CRLF
+*.cmd  text eol=crlf
+*.bat  text eol=crlf
+
+# The Maven wrapper shell script must stay LF (executable on Linux/CI)
+mvnw   text eol=lf
+
+# Treat these as binary (no EOL munging, no diffs)
+*.jar  binary
+*.png  binary
+*.jpg  binary
+*.ico  binary
+

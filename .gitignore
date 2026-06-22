@@ -1,0 +1,51 @@
+# ───────────────────────── Build output ─────────────────────────
+target/
+
+# ───────────────────────────── Java ─────────────────────────────
+*.class
+*.log
+*.jar
+hs_err_pid*
+replay_pid*
+
+# ─────────────────────── Secrets / local env ────────────────────
+# docker-compose reads ${LLM_API_KEY} — never commit a populated .env
+.env
+*.env
+application-local.yml
+application-local.yaml
+application-local.properties
+
+# ─────────────────────────── IntelliJ ───────────────────────────
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+# ──────────────────────────── Eclipse ───────────────────────────
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+bin/
+
+# ──────────────────────────── NetBeans ──────────────────────────
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+# ──────────────────────────── VS Code ───────────────────────────
+.vscode/
+
+# ───────────────────────────── OS ───────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Maven wrapper: keep the script-only wrapper committed ──
+# (mvnw, mvnw.cmd and .mvn/wrapper/maven-wrapper.properties are intentionally tracked)
