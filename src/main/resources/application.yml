@@ -6,10 +6,15 @@ spring:
       # Treat unknown enum values as null (then rejected per-row by validation).
       read-unknown-enum-values-as-null: true
   datasource:
-    url: jdbc:mysql://localhost:3306/transactions_db?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+    url: jdbc:mysql://localhost:3306/transactions_db?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&rewriteBatchedStatements=true
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:root}
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      # Size to the DB's real capacity; verify under load. Must be <= MySQL max_connections.
+      maximum-pool-size: 50
+      minimum-idle: 10
+      connection-timeout: 10000
   jpa:
     hibernate:
       # Flyway owns the schema; Hibernate only validates against it.
@@ -20,6 +25,11 @@ spring:
         # Map java.time.Instant to MySQL DATETIME(6) to match the migrations.
         type:
           preferred_instant_jdbc_type: TIMESTAMP
+        # Group writes into JDBC batches (AUTO_INCREMENT ids limit INSERT batching).
+        jdbc:
+          batch_size: 100
+        order_inserts: true
+        order_updates: true
   flyway:
     enabled: true
     locations: classpath:db/migration
@@ -32,6 +42,11 @@ spring:
 
 server:
   port: 8080
+  tomcat:
+    threads:
+      # HTTP worker threads handle synchronous bulk-ingest requests.
+      max: 200
+      min-spare: 50
 
 springdoc:
   swagger-ui:
@@ -40,15 +55,15 @@ springdoc:
 # ---- Application-specific configuration ----
 categorization:
   # Maximum number of rows accepted per bulk request.
-  max-bulk-size: 1000
+  max-bulk-size: 20000
   # Enable or disable the LLM fallback strategy.
   fallback:
     enabled: true
-  # Thread pool for the asynchronous categorisation trigger.
+  # Thread pool that runs per-merchant categorisation in parallel (max-size = parallelism).
   async:
-    core-size: 4
-    max-size: 8
-    queue-capacity: 100
+    core-size: 8
+    max-size: 16
+    queue-capacity: 1000
     thread-name-prefix: cat-
   # LLM client settings. Leave api-key empty to disable outbound calls.
   llm:

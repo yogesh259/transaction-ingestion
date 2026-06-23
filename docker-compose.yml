@@ -2,6 +2,8 @@ services:
   mysql:
     image: mysql:8.0
     container_name: ingestion-mysql
+    # Demo tuning: more connections + relaxed commit fsync for faster bulk inserts.
+    command: --max-connections=300 --innodb-flush-log-at-trx-commit=2
     environment:
       MYSQL_DATABASE: transactions_db
       MYSQL_USER: app

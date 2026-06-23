@@ -31,11 +31,43 @@ public class RestClientLlmClient implements LlmClient {
 
     static final BigDecimal DEFAULT_CONFIDENCE = new BigDecimal("0.50");
 
-    private static final String PROMPT = """
-            You are a financial transaction categorisation assistant.
-            Given a merchant name, respond ONLY with a compact JSON object using the keys
-            "category", "sub_category" and "confidence" (a number between 0 and 1).
-            Do not include any prose outside the JSON.""";
+    private static final String PROMPT_TEMPLATE = """
+            You are an expert financial transaction categorisation assistant. Your task is to categorise a merchant name into a relevant category and sub-category.
+
+            Respond ONLY with a compact JSON object with three keys: "category", "sub_category", and "confidence".
+            - "category": A broad category, like "Groceries", "Transport", or "Entertainment".
+            - "sub_category": A more specific sub-category, like "Supermarket", "Ride-sharing", or "Movies".
+            - "confidence": A number between 0.0 and 1.0 indicating your confidence in the categorisation.
+
+            Do not include any prose, markdown, or any text outside of the JSON object.
+
+            Here are some examples:
+
+            Merchant: "UBER TRIP"
+            {
+              "category": "Transport",
+              "sub_category": "Ride-sharing",
+              "confidence": 0.9
+            }
+
+            Merchant: "COLES SUPERMARKET"
+            {
+              "category": "Groceries",
+              "sub_category": "Supermarket",
+              "confidence": 0.95
+            }
+
+            Merchant: "NETFLIX"
+            {
+              "category": "Entertainment",
+              "sub_category": "Streaming Services",
+              "confidence": 1.0
+            }
+
+            Now, categorise the following merchant.
+
+            Merchant: "%s"
+            """;
 
     private final CategorisationProperties.Llm properties;
     private final ObjectMapper objectMapper;
@@ -84,7 +116,7 @@ public class RestClientLlmClient implements LlmClient {
         return Map.of(
                 "contents", List.of(
                         Map.of("parts", List.of(
-                                Map.of("text", String.format(PROMPT, merchantName))
+                                Map.of("text", String.format(PROMPT_TEMPLATE, merchantName))
                         ))
                 )
         );

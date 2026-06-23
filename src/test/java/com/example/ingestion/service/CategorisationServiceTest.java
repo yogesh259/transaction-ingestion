@@ -12,14 +12,18 @@ import com.example.ingestion.entity.CategoryRule;
 import com.example.ingestion.repository.CategoryRuleRepository;
 import com.example.ingestion.repository.TransactionRepository;
 import java.util.List;
+import java.util.concurrent.Executor;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class CategorisationServiceTest {
+
+    /** Runs the fan-out tasks inline so assertions are deterministic. */
+    private static final Executor DIRECT_EXECUTOR = Runnable::run;
 
     @Mock
     private CategoryRuleRepository ruleRepository;
@@ -28,8 +32,13 @@ class CategorisationServiceTest {
     @Mock
     private MerchantCategoriser merchantCategoriser;
 
-    @InjectMocks
     private CategorisationService service;
+
+    @BeforeEach
+    void setUp() {
+        service = new CategorisationService(
+                ruleRepository, transactionRepository, merchantCategoriser, DIRECT_EXECUTOR);
+    }
 
     @Test
     void trigger_loadsActiveRulesOnce_andCategorisesEachMerchantWithThem() {

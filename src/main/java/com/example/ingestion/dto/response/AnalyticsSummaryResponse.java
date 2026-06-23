@@ -18,18 +18,7 @@ public record AnalyticsSummaryResponse(
     public record MerchantSpend(String merchantName, BigDecimal totalSpend) {
     }
 
-    /**
-     * @param month            the calendar month in {@code yyyy-MM}
-     * @param totalSpend       spend in this month
-     * @param previousMonthSpend spend in the previous listed month (null for the first)
-     * @param deltaPct         percentage change vs. previous month (null for the first)
-     */
-    public record MonthlyDelta(
-            String month,
-            BigDecimal totalSpend,
-            BigDecimal previousMonthSpend,
-            BigDecimal deltaPct
-    ) {
+    public record MonthlyDelta(String month, BigDecimal totalSpend, BigDecimal previousMonthSpend, BigDecimal deltaPct) {
     }
 }
 

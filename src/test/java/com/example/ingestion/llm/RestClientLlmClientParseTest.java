@@ -12,17 +12,19 @@ class RestClientLlmClientParseTest {
 
     private final ObjectMapper mapper = new ObjectMapper();
 
-    /** Build an OpenAI-style envelope: {choices:[{message:{content:"<json>"}}]}. */
-    private com.fasterxml.jackson.databind.JsonNode envelope(String contentJson) {
+    /** Build a Gemini-style envelope: {candidates:[{content:{parts:[{text:"<json>"}]}}]}. */
+    private com.fasterxml.jackson.databind.JsonNode envelope(String textContent) {
         ObjectNode root = mapper.createObjectNode();
-        ObjectNode message = root.putArray("choices").addObject().putObject("message");
-        message.put("content", contentJson);
+        ObjectNode part = root.putArray("candidates").addObject()
+                .putObject("content")
+                .putArray("parts").addObject();
+        part.put("text", textContent);
         return root;
     }
 
     @Test
     void parsesValidContent() {
-        Optional<LlmCategorisation> result = RestClientLlmClient.parseChatCompletion(
+        Optional<LlmCategorisation> result = RestClientLlmClient.parseGeminiResponse(
                 envelope("{\"category\":\"Shopping\",\"sub_category\":\"Online\",\"confidence\":0.83}"), mapper);
 
         assertThat(result).isPresent();
@@ -32,44 +34,70 @@ class RestClientLlmClientParseTest {
     }
 
     @Test
+    void parsesValidContentWithMarkdown() {
+        Optional<LlmCategorisation> result = RestClientLlmClient.parseGeminiResponse(
+                envelope("```json\n{\"category\":\"Shopping\",\"sub_category\":\"Online\",\"confidence\":0.83}\n```"), mapper);
+
+        assertThat(result).isPresent();
+        assertThat(result.get().category()).isEqualTo("Shopping");
+        assertThat(result.get().subCategory()).isEqualTo("Online");
+        assertThat(result.get().confidence()).isEqualByComparingTo("0.83");
+    }
+
+    @Test
     void clampsOutOfRangeConfidence() {
-        assertThat(RestClientLlmClient.parseChatCompletion(
+        assertThat(RestClientLlmClient.parseGeminiResponse(
                 envelope("{\"category\":\"X\",\"confidence\":1.5}"), mapper)
                 .orElseThrow().confidence()).isEqualByComparingTo("1.00");
 
-        assertThat(RestClientLlmClient.parseChatCompletion(
+        assertThat(RestClientLlmClient.parseGeminiResponse(
                 envelope("{\"category\":\"X\",\"confidence\":-0.2}"), mapper)
                 .orElseThrow().confidence()).isEqualByComparingTo("0.00");
     }
 
     @Test
-    void missingConfidenceUsesDefault() {
-        assertThat(RestClientLlmClient.parseChatCompletion(
-                envelope("{\"category\":\"X\"}"), mapper)
-                .orElseThrow().confidence()).isEqualByComparingTo("0.50");
-    }
-
-    @Test
     void missingCategoryReturnsEmpty() {
-        assertThat(RestClientLlmClient.parseChatCompletion(
-                envelope("{\"sub_category\":\"Online\"}"), mapper)).isEmpty();
+        assertThat(RestClientLlmClient.parseGeminiResponse(
+                envelope("{\"sub_category\":\"Online\",\"confidence\":0.83}"), mapper)).isEmpty();
     }
 
     @Test
-    void malformedContentJsonReturnsEmpty() {
-        assertThat(RestClientLlmClient.parseChatCompletion(envelope("not-json"), mapper)).isEmpty();
+    void missingSubCategoryIsTolerated() {
+        Optional<LlmCategorisation> result = RestClientLlmClient.parseGeminiResponse(
+                envelope("{\"category\":\"Shopping\",\"confidence\":0.83}"), mapper);
+        assertThat(result).isPresent();
+        assertThat(result.get().subCategory()).isNull();
     }
 
     @Test
-    void missingMessageContentReturnsEmpty() {
-        assertThat(RestClientLlmClient.parseChatCompletion(mapper.createObjectNode(), mapper)).isEmpty();
-        assertThat(RestClientLlmClient.parseChatCompletion(null, mapper)).isEmpty();
+    void missingConfidenceUsesDefault() {
+        Optional<LlmCategorisation> result = RestClientLlmClient.parseGeminiResponse(
+                envelope("{\"category\":\"Shopping\",\"sub_category\":\"Online\"}"), mapper);
+        assertThat(result).isPresent();
+        assertThat(result.get().confidence()).isEqualTo(RestClientLlmClient.DEFAULT_CONFIDENCE);
+    }
+
+    @Test
+    void malformedJsonReturnsEmpty() {
+        assertThat(RestClientLlmClient.parseGeminiResponse(envelope("not json"), mapper)).isEmpty();
+        assertThat(RestClientLlmClient.parseGeminiResponse(envelope("{\"category\":\"X"), mapper)).isEmpty();
+    }
+
+    @Test
+    void emptyResponseReturnsEmpty() {
+        assertThat(RestClientLlmClient.parseGeminiResponse(null, mapper)).isEmpty();
+        assertThat(RestClientLlmClient.parseGeminiResponse(mapper.createObjectNode(), mapper)).isEmpty();
     }
 
     @Test
     void clampConfidenceRoundsToTwoDecimals() {
         assertThat(RestClientLlmClient.clampConfidence(new BigDecimal("0.8275"))).isEqualByComparingTo("0.83");
+        assertThat(RestClientLlmClient.clampConfidence(new BigDecimal("0.451"))).isEqualByComparingTo("0.45");
+        assertThat(RestClientLlmClient.clampConfidence(new BigDecimal("0.995"))).isEqualByComparingTo("1.00");
+    }
+
+    @Test
+    void clampConfidenceHandlesNull() {
         assertThat(RestClientLlmClient.clampConfidence(null)).isEqualByComparingTo("0.50");
     }
 }
-
