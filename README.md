@@ -8,6 +8,14 @@ the results via a REST API.
 
 ---
 
+## Demo
+
+[![Project Demo Video](https://img.youtube.com/vi/XfeKljJQ6jg/0.jpg)](https://youtu.be/XfeKljJQ6jg)
+
+*Click the thumbnail to watch the video demo.*
+
+---
+
 ## Contents
 - [Tech stack](#tech-stack)
 - [Prerequisites](#prerequisites)
