@@ -15,19 +15,20 @@ public interface MerchantCategoryRepository extends JpaRepository<MerchantCatego
 
     /**
      * Inserts a category for a merchant, or updates the existing row, in a single
-     * atomic statement keyed on the unique {@code merchant_name}.
+     * atomic statement keyed on the unique {@code merchant_name}. Uses VALUES()
+     * rather than the MySQL 8.0.19+ row alias so it also runs on TiDB.
      */
     @Modifying
     @Query(value = """
             INSERT INTO merchant_categories
                 (merchant_name, category, sub_category, confidence_score, categorised_at, strategy_used)
-            VALUES (:merchantName, :category, :subCategory, :confidence, CURRENT_TIMESTAMP(6), :strategyUsed) AS new
+            VALUES (:merchantName, :category, :subCategory, :confidence, CURRENT_TIMESTAMP(6), :strategyUsed)
             ON DUPLICATE KEY UPDATE
-                category = new.category,
-                sub_category = new.sub_category,
-                confidence_score = new.confidence_score,
+                category = VALUES(category),
+                sub_category = VALUES(sub_category),
+                confidence_score = VALUES(confidence_score),
                 categorised_at = CURRENT_TIMESTAMP(6),
-                strategy_used = new.strategy_used
+                strategy_used = VALUES(strategy_used)
             """, nativeQuery = true)
     void upsert(@Param("merchantName") String merchantName,
                 @Param("category") String category,

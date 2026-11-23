@@ -74,7 +74,7 @@ flowchart LR
 | Frontend       | Plain HTML/CSS/JS served by Spring Boot, Chart.js, PapaParse, SheetJS |
 | API docs       | springdoc-openapi (Swagger UI)                                  |
 | Tests          | JUnit 5, Mockito, Testcontainers (MySQL), Awaitility            |
-| Packaging      | Multi-stage Docker image · docker-compose · Render blueprint    |
+| Packaging      | Multi-stage Docker image · docker-compose · Render blueprint (runs on MySQL 8 or TiDB) |
 
 ## Run locally
 
@@ -100,17 +100,31 @@ To build or test without Docker you need **JDK 21** and `./mvnw`:
 ./mvnw test     # unit tests + Testcontainers integration test (needs Docker running)
 ```
 
-## Deploy (Render + free MySQL)
+## Deploy for free (Render + TiDB Cloud)
 
-1. Create a free MySQL 8 database (for example on [Aiven](https://aiven.io/free-mysql-database))
-   and note the host, port, user and password.
-2. On [Render](https://render.com): **New → Blueprint**, pick this repository. `render.yaml`
-   builds the Dockerfile as a free web service.
-3. Set the environment variables Render asks for:
-   - `DB_URL` = `jdbc:mysql://<host>:<port>/defaultdb?sslMode=REQUIRED&serverTimezone=UTC&rewriteBatchedStatements=true`
-   - `DB_USERNAME`, `DB_PASSWORD`
-   - `LLM_API_KEY` (optional)
-4. Flyway creates the schema and seeds the rules on first start.
+The app is one Docker image plus a MySQL-compatible database.
+
+**1. Database: [TiDB Cloud Starter](https://tidbcloud.com)** (MySQL-compatible, free tier)
+- Create a Starter cluster (AWS, the region closest to your Render region).
+- **Connect** → *Public endpoint* → generate a password and note host, port (`4000`) and user
+  (looks like `xxxxxxxx.root`).
+- Open the **SQL Editor** and run `CREATE DATABASE transactions_db;`
+
+**2. App: [Render](https://render.com)** free web service
+- **New → Blueprint**, select this repository; `render.yaml` builds the Dockerfile.
+- Fill in the environment variables it prompts for:
+
+  | Variable | Value |
+  |---|---|
+  | `DB_URL` | `jdbc:mysql://<host>:4000/transactions_db?sslMode=VERIFY_IDENTITY&serverTimezone=UTC&rewriteBatchedStatements=true` |
+  | `DB_USERNAME` | `xxxxxxxx.root` |
+  | `DB_PASSWORD` | the generated password |
+  | `LLM_API_KEY` | Gemini key from [AI Studio](https://aistudio.google.com/apikey) (optional) |
+
+- Deploy. Flyway creates the schema and seeds the rules on first start.
+
+Free-tier behaviour: the Render service sleeps after 15 idle minutes, and the first request
+after that takes about a minute while it wakes up.
 
 The public demo has no login: every visitor sees the same data, and **Clear data**
 wipes it (set `APP_RESET_ENABLED=false` to disable). Use the sample passbook there,

@@ -1,6 +1,6 @@
 # Render Blueprint — https://render.com/docs/blueprint-spec
-# Deploys the Docker image as a free web service. The MySQL database is external
-# (e.g. Aiven's free MySQL); set DB_URL / DB_USERNAME / DB_PASSWORD in the dashboard.
+# Deploys the Docker image as a free web service. The database is external and
+# MySQL-compatible (e.g. TiDB Cloud Starter, free); see README "Deploy for free".
 services:
   - type: web
     name: passbook-insights
@@ -9,7 +9,7 @@ services:
     healthCheckPath: /actuator/health
     envVars:
       - key: DB_URL
-        sync: false          # jdbc:mysql://<host>:<port>/defaultdb?sslMode=REQUIRED&serverTimezone=UTC&rewriteBatchedStatements=true
+        sync: false          # jdbc:mysql://<host>:4000/transactions_db?sslMode=VERIFY_IDENTITY&serverTimezone=UTC&rewriteBatchedStatements=true
       - key: DB_USERNAME
         sync: false
       - key: DB_PASSWORD
