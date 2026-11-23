@@ -5,7 +5,7 @@ analytics. A Spring Boot 3 service ingests transactions in bulk, cleans raw bank
 narrations into merchant names, categorises each merchant with configurable keyword
 rules and falls back to an LLM (Google Gemini) for anything the rules don't know.
 
-**Live demo:** _add your deployed URL here_ · **API docs:** `/swagger-ui.html`
+**Live demo:** https://passbook-insights.onrender.com · **API docs:** [Swagger UI](https://passbook-insights.onrender.com/swagger-ui.html)
 
 ![Dashboard](docs/screenshots/dashboard.png)
 
@@ -99,36 +99,6 @@ To build or test without Docker you need **JDK 21** and `./mvnw`:
 ```bash
 ./mvnw test     # unit tests + Testcontainers integration test (needs Docker running)
 ```
-
-## Deploy for free (Render + TiDB Cloud)
-
-The app is one Docker image plus a MySQL-compatible database.
-
-**1. Database: [TiDB Cloud Starter](https://tidbcloud.com)** (MySQL-compatible, free tier)
-- Create a Starter cluster (AWS, the region closest to your Render region).
-- **Connect** → *Public endpoint* → generate a password and note host, port (`4000`) and user
-  (looks like `xxxxxxxx.root`).
-- Open the **SQL Editor** and run `CREATE DATABASE transactions_db;`
-
-**2. App: [Render](https://render.com)** free web service
-- **New → Blueprint**, select this repository; `render.yaml` builds the Dockerfile.
-- Fill in the environment variables it prompts for:
-
-  | Variable | Value |
-  |---|---|
-  | `DB_URL` | `jdbc:mysql://<host>:4000/transactions_db?sslMode=VERIFY_IDENTITY&serverTimezone=UTC&rewriteBatchedStatements=true` |
-  | `DB_USERNAME` | `xxxxxxxx.root` |
-  | `DB_PASSWORD` | the generated password |
-  | `LLM_API_KEY` | Gemini key from [AI Studio](https://aistudio.google.com/apikey) (optional) |
-
-- Deploy. Flyway creates the schema and seeds the rules on first start.
-
-Free-tier behaviour: the Render service sleeps after 15 idle minutes, and the first request
-after that takes about a minute while it wakes up.
-
-The public demo has no login: every visitor sees the same data, and **Clear data**
-wipes it (set `APP_RESET_ENABLED=false` to disable). Use the sample passbook there,
-and run locally for real statements.
 
 ## Configuration
 
