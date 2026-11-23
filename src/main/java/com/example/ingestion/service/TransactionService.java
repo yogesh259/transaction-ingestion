@@ -93,6 +93,14 @@ public class TransactionService {
         return new BulkIngestResponse(toPersist.size(), errors.size(), errors);
     }
 
+    /** Removes all transactions and merchant categories (rules are kept). Used by the demo reset. */
+    @Transactional
+    public void deleteAll() {
+        merchantCategoryRepository.deleteAllInBatch();
+        transactionRepository.deleteAllInBatch();
+        log.info("All transactions and merchant categories deleted");
+    }
+
     @Transactional(readOnly = true)
     public Page<TransactionResponse> query(String category,
                                            Source source,

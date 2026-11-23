@@ -41,6 +41,10 @@ public class Transaction {
     @Column(name = "merchant_name", nullable = false)
     private String merchantName;
 
+    /** Raw narration as received (e.g. a bank-statement line); null when identical to the merchant name. */
+    @Column(name = "description", length = 512)
+    private String description;
+
     @Column(name = "amount", nullable = false, precision = 19, scale = 4)
     private BigDecimal amount;
 

@@ -1,146 +1,192 @@
-# Transaction Ingestion & Rule-Based Categorisation Engine
+# Passbook Insights — Transaction Ingestion & Categorisation Engine
 
-A Spring Boot 3 microservice that ingests payment transactions in bulk, categorises
-merchants using configurable rules with an LLM fallback (Strategy pattern), and serves
-the results via a REST API.
+Upload a bank statement (CSV / Excel from net banking) and get categorised spending
+analytics. A Spring Boot 3 service ingests transactions in bulk, cleans raw bank
+narrations into merchant names, categorises each merchant with configurable keyword
+rules and falls back to an LLM (Google Gemini) for anything the rules don't know.
 
-> Requirements: [`REQUIREMENT.MD`](./REQUIREMENT.MD)
+**Live demo:** _add your deployed URL here_ · **API docs:** `/swagger-ui.html`
 
----
+![Dashboard](docs/screenshots/dashboard.png)
 
-## Demo
+<details>
+<summary>More screenshots</summary>
 
-[![Project Demo Video](https://img.youtube.com/vi/XfeKljJQ6jg/0.jpg)](https://youtu.be/XfeKljJQ6jg)
+**Transactions** — raw narration under each cleaned merchant, with how it was categorised
 
-*Click the thumbnail to watch the video demo.*
+![Transactions](docs/screenshots/transactions.png)
 
----
+**Import** — columns are auto-detected; only debits are analysed
 
-## Contents
-- [Tech stack](#tech-stack)
-- [Prerequisites](#prerequisites)
-- [Running the service](#running-the-service)
-- [Database migrations (Flyway)](#database-migrations-flyway)
-- [API reference](#api-reference)
-- [Categorisation logic](#categorisation-logic)
+![Import](docs/screenshots/import.png)
+</details>
 
 ---
+
+## What it does
+
+1. **Import** a statement in the browser. The header row and the Date / Narration /
+   Debit / Credit columns are detected automatically (SBI, HDFC, ICICI, Axis and
+   Kotak style exports, CSV or XLS/XLSX). Only debits are sent to the API.
+2. **Normalise** each narration into a stable merchant key, so the same merchant is
+   categorised once however many reference numbers the bank wraps around it:
+
+   | Raw narration | Merchant |
+   |---|---|
+   | `UPI/DR/412345678901/SWIGGY/YESB/swiggy@ybl/Payment` | `SWIGGY` |
+   | `UPI-ZOMATO LIMITED-zomato@hdfcbank-HDFC0000001-4123…` | `ZOMATO` |
+   | `UPI/4123…/Payment from Ph/swiggy@ybl/YES BANK LIMITED` | `SWIGGY` |
+   | `ACH D- BAJAJ FINANCE LTD-0000123456` | `BAJAJ FINANCE` |
+   | `ATM WDL/12345/MG ROAD BANGALORE` | `ATM CASH WITHDRAWAL` |
+
+   On the 143-row sample passbook this reduces 136 debit lines to 25 distinct merchants.
+3. **Categorise** merchants asynchronously on a thread pool. Keyword rules are tried
+   first (deterministic, confidence 1.0); unmatched merchants go to Gemini, which
+   returns `{ category, sub_category, confidence }`.
+4. **Analyse**: spend by category, top 10 merchants, month-over-month change, plus
+   a filterable, paginated transaction list.
+5. **Correct**: "Fix" on any transaction creates a rule and re-applies the rules to
+   every merchant, overriding earlier rule or AI results.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    UI[Browser UI<br/>CSV/XLSX parsing] -- JSON --> API[REST API<br/>Spring Boot]
+    API --> N[MerchantNameNormaliser]
+    N --> DB[(MySQL<br/>Flyway)]
+    API -- "@Async trigger" --> C[CategorisationService<br/>thread pool]
+    C --> R[RuleBasedStrategy]
+    C --> F[FallbackStrategy]
+    F --> G[Gemini API]
+    C -- "INSERT … ON DUPLICATE KEY UPDATE" --> DB
+```
 
 ## Tech stack
 
-| Concern        | Choice                                              |
-|----------------|-----------------------------------------------------|
-| Language       | Java 21 (LTS)                                        |
-| Framework      | Spring Boot 3.5.x (Web, Data JPA, Validation)       |
-| Database       | MySQL 8                                              |
-| Migrations     | **Flyway** (versioned SQL)                           |
-| Async          | `@Async` + configurable `ThreadPoolTaskExecutor`    |
-| API docs       | springdoc-openapi (Swagger UI)                      |
-| Tests          | JUnit 5, Mockito, Testcontainers (MySQL), Awaitility|
-| Packaging      | Maven · multi-stage Docker · docker-compose         |
+| Concern        | Choice                                                          |
+|----------------|-----------------------------------------------------------------|
+| Language       | Java 21                                                         |
+| Framework      | Spring Boot 3.5 (Web, Data JPA, Validation, Actuator)           |
+| Database       | MySQL 8, schema managed by **Flyway** (versioned SQL)           |
+| Async          | `@Async` + configurable `ThreadPoolTaskExecutor`, `CompletableFuture` fan-out |
+| LLM            | Google Gemini via Spring `RestClient`, retry with backoff on 429/503 |
+| Frontend       | Plain HTML/CSS/JS served by Spring Boot, Chart.js, PapaParse, SheetJS |
+| API docs       | springdoc-openapi (Swagger UI)                                  |
+| Tests          | JUnit 5, Mockito, Testcontainers (MySQL), Awaitility            |
+| Packaging      | Multi-stage Docker image · docker-compose · Render blueprint    |
 
-## Prerequisites
+## Run locally
 
-**Option A — Docker only (recommended, nothing else needed):**
-- Docker Desktop / Docker Engine with Compose
-
-**Option B — Local build/run:**
-- **JDK 21** (this repo targets Java 21; it will *not* compile on Java 11/17-)
-- Maven 3.9+ **or** the committed wrapper `./mvnw` (script-only; downloads Maven on first use)
-- A running MySQL 8 (or use the `mysql` service from compose)
-
-## Running the service
-
-### With Docker Compose (service + MySQL)
+Requires Docker only.
 
 ```bash
+# optional: enables the AI fallback (free key: https://aistudio.google.com/apikey)
+echo "LLM_API_KEY=your-gemini-key" > .env
+
 docker compose up --build
 ```
 
-This builds the app image, starts MySQL, waits for it to be healthy, runs Flyway
-migrations on startup, and exposes the API on **http://localhost:8080**.
+Open **http://localhost:8080** and click **Try with sample passbook**, or upload your own
+statement. Everything runs on your machine, so this is the private way to analyse a
+real passbook.
 
-- Swagger UI: http://localhost:8080/swagger-ui.html
+Without an LLM key, rule-based categorisation still works and unmatched merchants
+show as *Uncategorised* until you add a rule.
 
-Tear down (and wipe the DB volume):
+To build or test without Docker you need **JDK 21** and `./mvnw`:
 
 ```bash
-docker compose down -v
+./mvnw test     # unit tests + Testcontainers integration test (needs Docker running)
 ```
 
-## Database Migrations (Flyway)
+## Deploy (Render + free MySQL)
 
-The database schema is managed by Flyway using versioned SQL scripts located in
-[`src/main/resources/db/migration`](./src/main/resources/db/migration):
+1. Create a free MySQL 8 database (for example on [Aiven](https://aiven.io/free-mysql-database))
+   and note the host, port, user and password.
+2. On [Render](https://render.com): **New → Blueprint**, pick this repository. `render.yaml`
+   builds the Dockerfile as a free web service.
+3. Set the environment variables Render asks for:
+   - `DB_URL` = `jdbc:mysql://<host>:<port>/defaultdb?sslMode=REQUIRED&serverTimezone=UTC&rewriteBatchedStatements=true`
+   - `DB_USERNAME`, `DB_PASSWORD`
+   - `LLM_API_KEY` (optional)
+4. Flyway creates the schema and seeds the rules on first start.
 
-| Script | Purpose |
-|--------|---------|
-| `V1__create_transactions.sql`        | `transactions` + indexes |
-| `V2__create_merchant_categories.sql` | `merchant_categories` + unique merchant constraint + confidence CHECK |
-| `V3__create_category_rules.sql`      | `category_rules` + unique keyword |
-| `V4__seed_category_rules.sql`        | seed starter rules |
+The public demo has no login: every visitor sees the same data, and **Clear data**
+wipes it (set `APP_RESET_ENABLED=false` to disable). Use the sample passbook there,
+and run locally for real statements.
 
-## API Reference
+## Configuration
 
-Base path: `/api/v1`. The Swagger UI provides a full, interactive reference for all endpoints.
+| Variable | Default | Purpose |
+|---|---|---|
+| `DB_URL` / `DB_USERNAME` / `DB_PASSWORD` | local MySQL | Datasource |
+| `LLM_API_KEY` | _(empty)_ | Gemini key; empty disables the AI fallback |
+| `LLM_MODEL` | `gemini-2.5-flash` | Gemini model |
+| `CATEGORISATION_POOL_CORE` / `_MAX` | `8` / `16` | Categorisation thread pool |
+| `DB_POOL_MAX` | `50` | Hikari max connections |
+| `APP_RESET_ENABLED` | `true` | Allow `DELETE /api/v1/transactions` |
+| `PORT` | `8080` | HTTP port |
 
-### 1. Bulk ingest — `POST /transactions/bulk`
-Per-row validation: valid rows are persisted, invalid ones are rejected with their index and a reason.
+`categorization.fallback.enabled` in `application.yml` switches the LLM strategy on or off.
 
-**Request Body:**
-```json
-[
-  {"merchantName":"STARBUCKS NYC","amount":5.50,"currency":"USD","transactionDate":"2026-05-01","source":"BANK_FEED"},
-  {"merchantName":"UBER TRIP 88","amount":20.00,"currency":"USD","transactionDate":"2026-06-02","source":"IMPORT"},
-  {"merchantName":"","amount":-3,"currency":"XYZ","transactionDate":"2026-06-03","source":"MANUAL"}
-]
-```
+## API
 
-### 2. Trigger categorisation — `POST /categorise/trigger`
-Asynchronously triggers the categorisation of all uncategorised merchants. Returns **202 Accepted** immediately.
+Base path `/api/v1`. Full interactive reference at `/swagger-ui.html`.
 
-### 3. List transactions — `GET /transactions`
-Paginated list of transactions. Supports filtering by `category`, `source`, `dateFrom`, `dateTo`, and standard pagination (`page`/`size`/`sort`).
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/transactions/bulk` | Ingest a JSON array; per-row validation, returns accepted / rejected with reasons |
+| `GET` | `/transactions` | Paginated list; filter by `category`, `source`, `dateFrom`, `dateTo` |
+| `DELETE` | `/transactions` | Remove all transactions and merchant categories (rules kept) |
+| `POST` | `/categorise/trigger` | Async categorisation of uncategorised merchants (`202`); `?recategorise=true` re-applies rules to all |
+| `GET` | `/categorise/status` | `{ running, totalMerchants, uncategorisedMerchants }` |
+| `GET` | `/analytics/summary` | Spend by category, top 10 merchants, month-over-month delta |
+| `GET` | `/rules` | List rules by precedence |
+| `POST` | `/rules` | Create or update a rule (upsert by keyword) |
 
-### 4. Analytics summary — `GET /analytics/summary`
-Provides an analytics summary including total spend by category, top merchants, and month-over-month spending deltas.
+Errors use one shape: `{ timestamp, status, error, message, path }`.
 
-### 5. Create/update rule — `POST /rules` (admin)
-Upserts a categorisation rule based on a keyword (case-insensitive).
-
-**Request Body:**
-```json
-{
-  "keyword":"TESCO",
-  "category":"Shopping",
-  "subCategory":"Groceries",
-  "priority":25,
-  "isActive":true
-}
+```bash
+curl -X POST localhost:8080/api/v1/transactions/bulk -H 'Content-Type: application/json' -d '[
+  {"merchantName":"UPI/DR/4123/SWIGGY/YESB/swiggy@ybl/Payment","amount":349,"currency":"INR","transactionDate":"2026-11-01","source":"IMPORT"},
+  {"merchantName":"STARBUCKS NYC","amount":5.50,"currency":"USD","transactionDate":"2026-05-01","source":"BANK_FEED"}
+]'
 ```
 
 ## Categorisation logic
 
-`CategorisationService` (orchestrator) + `MerchantCategoriser` (per-merchant
+`CategorisationService` (orchestrator) and `MerchantCategoriser` (per-merchant
 transactional unit) implement the **Strategy pattern**:
 
-1.  **`RuleBasedStrategy`** — matches `merchant_name` against **active** `category_rules`
-    by keyword, **case-insensitive** and **priority-ordered** (lowest value wins).
-    Deterministic ⇒ `confidence = 1.0`, `strategy_used = RULE_BASED`. Matching is
-    **substring-based**.
-2.  **`FallbackStrategy`** — only when no rule matches **and**
-    `categorization.fallback.enabled=true`. Calls the LLM with a structured prompt and
-    parses `{ category, sub_category, confidence }` (confidence **clamped to [0,1]**) ⇒
-    `strategy_used = FALLBACK_LLM`.
+1. **`RuleBasedStrategy`**: case-insensitive substring match of the merchant against
+   active `category_rules`, lowest `priority` first (so `SWIGGY INSTAMART` beats
+   `SWIGGY`). Confidence `1.0`, `strategy_used = RULE_BASED`.
+2. **`FallbackStrategy`**: only when no rule matches and
+   `categorization.fallback.enabled=true`. Calls Gemini with a structured prompt,
+   extracts the JSON even if wrapped in prose or markdown, and clamps confidence to
+   `[0, 1]`. `strategy_used = FALLBACK_LLM`. Failures leave the merchant
+   uncategorised rather than failing the run.
 
-How a trigger run works:
+How a run works:
 
-- Active rules are loaded **once per run** and reused for every merchant.
-- The trigger is an `@Async` method on the configurable pool
-  (`categorization.async.*`) that categorises the uncategorised merchants **in
-  parallel** across the pool (`max-size` bounds the parallelism).
-- Each merchant is persisted via an **atomic `INSERT … ON DUPLICATE KEY UPDATE`**
-  upsert (one row per merchant) by `MerchantCategoriser`, its own `@Transactional` bean.
+- Active rules are loaded once per run and shared by all workers.
+- Merchants are categorised in parallel on the configurable pool; a guard prevents
+  overlapping runs.
+- Each result is written with an atomic `INSERT … ON DUPLICATE KEY UPDATE` upsert
+  keyed on the unique merchant name.
 
-When the LLM key is absent or a call fails, the fallback resolves to empty and the
-merchant is left uncategorised.
+## Database migrations (Flyway)
+
+| Script | Purpose |
+|--------|---------|
+| `V1__create_transactions.sql`        | `transactions` + indexes |
+| `V2__create_merchant_categories.sql` | `merchant_categories`, unique merchant, confidence CHECK |
+| `V3__create_category_rules.sql`      | `category_rules`, unique keyword |
+| `V4__seed_category_rules.sql`        | Starter rules (global merchants) |
+| `V5__statement_support.sql`          | Raw narration column + rules for common Indian merchants |
+
+## Load testing
+
+`load-tests/payload-10k.json` is a 10,000-row payload (with deliberately invalid
+rows) for exercising bulk ingest and categorisation throughput.

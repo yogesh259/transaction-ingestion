@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Passbook Insights</title>
+  <meta name="description" content="Upload a bank statement and get categorised spending analytics — rules first, AI fallback.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a78d6'/%3E%3Crect x='8' y='17' width='4' height='7' rx='1' fill='white'/%3E%3Crect x='14' y='12' width='4' height='12' rx='1' fill='white'/%3E%3Crect x='20' y='8' width='4' height='16' rx='1' fill='white'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="app.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="#dashboard">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      Passbook Insights
+    </a>
+    <nav class="tabs" aria-label="Sections">
+      <a href="#dashboard" data-tab="dashboard">Dashboard</a>
+      <a href="#transactions" data-tab="transactions">Transactions</a>
+      <a href="#import" data-tab="import">Import</a>
+      <a href="#rules" data-tab="rules">Rules</a>
+    </nav>
+    <div class="topbar-links">
+      <a href="swagger-ui.html" target="_blank" rel="noopener">API docs</a>
+    </div>
+  </div>
+</header>
+
+<div id="progress" class="progress-banner" hidden>
+  <div class="progress-inner">
+    <span class="spinner" aria-hidden="true"></span>
+    <span id="progress-text">Categorising merchants…</span>
+    <div class="progress-track"><div id="progress-bar" class="progress-bar"></div></div>
+  </div>
+</div>
+
+<main class="container">
+
+  <!-- ───────────── Dashboard ───────────── -->
+  <section id="view-dashboard" class="view" hidden>
+    <div id="dash-empty" class="empty" hidden>
+      <h1>See where your money goes</h1>
+      <p>Upload a bank statement (CSV or Excel). Each narration is cleaned into a merchant
+        — <code>UPI/DR/4123…/SWIGGY/YESB/swiggy@ybl</code> becomes <b>SWIGGY</b> — then categorised by
+        keyword rules first and an LLM for anything the rules don't know.</p>
+      <div class="actions">
+        <button class="btn primary" data-action="sample">Try with sample passbook</button>
+        <a class="btn" href="#import">Upload my statement</a>
+      </div>
+    </div>
+
+    <div id="dash-content" hidden>
+      <div class="page-head">
+        <div>
+          <h1>Spending overview</h1>
+          <p class="muted" id="dash-range"></p>
+        </div>
+        <div class="actions">
+          <button class="btn" data-action="recategorise" title="Re-apply rules to every merchant">Re-run categorisation</button>
+          <button class="btn danger-ghost" data-action="reset">Clear data</button>
+        </div>
+      </div>
+
+      <div class="kpis">
+        <div class="kpi"><div class="kpi-label">Total spend</div><div class="kpi-value" id="kpi-total">–</div><div class="kpi-sub" id="kpi-total-sub"></div></div>
+        <div class="kpi"><div class="kpi-label">Latest month</div><div class="kpi-value" id="kpi-month">–</div><div class="kpi-sub" id="kpi-month-sub"></div></div>
+        <div class="kpi"><div class="kpi-label">Top category</div><div class="kpi-value" id="kpi-topcat">–</div><div class="kpi-sub" id="kpi-topcat-sub"></div></div>
+        <div class="kpi"><div class="kpi-label">Merchants categorised</div><div class="kpi-value" id="kpi-cov">–</div><div class="kpi-sub" id="kpi-cov-sub"></div></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-head"><h2>Spend by category</h2><span class="muted small">Click a bar to see its transactions</span></div>
+          <div class="chart-box" id="box-category"><canvas id="chart-category" aria-label="Spend by category" role="img"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Top 10 merchants</h2></div>
+          <div class="chart-box" id="box-merchants"><canvas id="chart-merchants" aria-label="Top merchants by spend" role="img"></canvas></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>Monthly spend</h2><span class="muted small">Change vs previous month shown above each bar</span></div>
+        <div class="chart-box short"><canvas id="chart-monthly" aria-label="Monthly spend" role="img"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────── Transactions ───────────── -->
+  <section id="view-transactions" class="view" hidden>
+    <div class="page-head"><h1>Transactions</h1></div>
+    <form id="tx-filters" class="filters">
+      <label>Category
+        <select name="category"><option value="">All</option></select>
+      </label>
+      <label>From <input type="date" name="dateFrom"></label>
+      <label>To <input type="date" name="dateTo"></label>
+      <button class="btn" type="reset">Clear</button>
+    </form>
+    <div class="card flush">
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>Date</th><th>Merchant</th><th>Category</th><th>Method</th><th class="num">Amount</th><th></th></tr></thead>
+          <tbody id="tx-body"></tbody>
+        </table>
+      </div>
+      <div class="pager">
+        <span id="tx-count" class="muted small"></span>
+        <div class="actions">
+          <button class="btn sm" id="tx-prev">← Prev</button>
+          <button class="btn sm" id="tx-next">Next →</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────── Import ───────────── -->
+  <section id="view-import" class="view" hidden>
+    <div class="page-head">
+      <div>
+        <h1>Import a statement</h1>
+        <p class="muted">CSV, XLS or XLSX downloaded from net banking. The file is read in your browser; only date,
+          narration and amount of each debit are sent to the server.</p>
+      </div>
+    </div>
+
+    <label id="drop" class="drop">
+      <input type="file" id="file" accept=".csv,.txt,.xls,.xlsx">
+      <strong>Drop your statement here</strong> or click to choose
+      <span class="muted small">Works with SBI, HDFC, ICICI, Axis, Kotak style exports — columns are auto-detected</span>
+    </label>
+    <p class="center small muted">No statement handy? <button class="linklike" data-action="sample">Use the sample passbook</button></p>
+
+    <div id="mapping" class="card" hidden>
+      <div class="card-head"><h2 id="map-title">Check the columns</h2><span class="muted small" id="map-file"></span></div>
+      <div class="map-grid">
+        <label>Date <select data-col="date"></select></label>
+        <label>Narration <select data-col="desc"></select></label>
+        <label>Debit / Withdrawal <select data-col="debit"></select></label>
+        <label>Credit / Deposit <select data-col="credit"></select></label>
+        <label>Amount (single column) <select data-col="amount"></select></label>
+        <label>Currency
+          <select id="currency">
+            <option>INR</option><option>USD</option><option>EUR</option><option>GBP</option><option>AUD</option><option>CAD</option><option>SGD</option><option>AED</option>
+          </select>
+        </label>
+      </div>
+      <div id="map-summary" class="map-summary"></div>
+      <div class="table-wrap preview">
+        <table class="table">
+          <thead><tr><th>Date</th><th>Narration</th><th class="num">Debit</th></tr></thead>
+          <tbody id="preview-body"></tbody>
+        </table>
+      </div>
+      <div class="actions end">
+        <button class="btn" id="map-cancel">Cancel</button>
+        <button class="btn primary" id="map-import">Import &amp; categorise</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────── Rules ───────────── -->
+  <section id="view-rules" class="view" hidden>
+    <div class="page-head">
+      <div>
+        <h1>Categorisation rules</h1>
+        <p class="muted">A merchant matches the first active rule (lowest priority number) whose keyword it contains,
+          case-insensitive. Merchants no rule matches go to the LLM.</p>
+      </div>
+      <div class="actions">
+        <button class="btn" data-action="recategorise">Re-run categorisation</button>
+        <button class="btn primary" id="rule-new">New rule</button>
+      </div>
+    </div>
+    <div class="card flush">
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>Keyword</th><th>Category</th><th>Sub-category</th><th class="num">Priority</th><th>Active</th><th></th></tr></thead>
+          <tbody id="rules-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  Spring Boot 3 · Java 21 · MySQL · Flyway · Gemini fallback ·
+  <a href="swagger-ui.html" target="_blank" rel="noopener">OpenAPI</a>
+</footer>
+
+<!-- Rule editor -->
+<dialog id="rule-dialog">
+  <form id="rule-form" method="dialog">
+    <h2 id="rule-dialog-title">Rule</h2>
+    <p class="muted small" id="rule-dialog-hint"></p>
+    <label>Keyword <input name="keyword" required maxlength="255" placeholder="e.g. SWIGGY"></label>
+    <div class="row-2">
+      <label>Category <input name="category" required list="category-list" maxlength="100"></label>
+      <label>Sub-category <input name="subCategory" maxlength="100"></label>
+    </div>
+    <div class="row-2">
+      <label>Priority <input name="priority" type="number" min="0" value="10" required></label>
+      <label class="check"><input name="isActive" type="checkbox" checked> Active</label>
+    </div>
+    <p class="error" id="rule-error" hidden></p>
+    <div class="actions end">
+      <button class="btn" value="cancel" formnovalidate>Cancel</button>
+      <button class="btn primary" id="rule-save" value="save">Save &amp; apply</button>
+    </div>
+  </form>
+</dialog>
+<datalist id="category-list"></datalist>
+
+<div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>

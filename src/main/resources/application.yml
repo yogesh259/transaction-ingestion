@@ -6,14 +6,14 @@ spring:
       # Treat unknown enum values as null (then rejected per-row by validation).
       read-unknown-enum-values-as-null: true
   datasource:
-    url: jdbc:mysql://localhost:3306/transactions_db?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&rewriteBatchedStatements=true
+    url: ${DB_URL:jdbc:mysql://localhost:3306/transactions_db?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&rewriteBatchedStatements=true}
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:root}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
       # Size to the DB's real capacity; verify under load. Must be <= MySQL max_connections.
-      maximum-pool-size: 50
-      minimum-idle: 10
+      maximum-pool-size: ${DB_POOL_MAX:50}
+      minimum-idle: ${DB_POOL_MIN_IDLE:10}
       connection-timeout: 10000
   jpa:
     hibernate:
@@ -41,7 +41,10 @@ spring:
         max-page-size: 200
 
 server:
-  port: 8080
+  # Hosting platforms (Render, Railway, ...) inject PORT.
+  port: ${PORT:8080}
+  compression:
+    enabled: true
   tomcat:
     threads:
       # HTTP worker threads handle synchronous bulk-ingest requests.
@@ -61,16 +64,21 @@ categorization:
     enabled: true
   # Thread pool that runs per-merchant categorisation in parallel (max-size = parallelism).
   async:
-    core-size: 8
-    max-size: 16
+    core-size: ${CATEGORISATION_POOL_CORE:8}
+    max-size: ${CATEGORISATION_POOL_MAX:16}
     queue-capacity: 1000
     thread-name-prefix: cat-
   # LLM client settings. Leave api-key empty to disable outbound calls.
   llm:
-    base-url: ${LLM_BASE_URL:https://api.openai.com/v1}
+    # Google Gemini generateContent API.
+    base-url: ${LLM_BASE_URL:https://generativelanguage.googleapis.com/v1beta}
     api-key: ${LLM_API_KEY:}
-    model: ${LLM_MODEL:gpt-4o-mini}
+    model: ${LLM_MODEL:gemini-2.5-flash}
     timeout-seconds: 15
+
+# Allows DELETE /api/v1/transactions (the UI's "Clear data" button).
+app:
+  reset-enabled: ${APP_RESET_ENABLED:true}
 
 management:
   endpoints:

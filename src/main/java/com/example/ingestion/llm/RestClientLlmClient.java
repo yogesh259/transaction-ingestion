@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClient;
 
 /**
@@ -30,6 +31,8 @@ public class RestClientLlmClient implements LlmClient {
     private static final Logger log = LoggerFactory.getLogger(RestClientLlmClient.class);
 
     static final BigDecimal DEFAULT_CONFIDENCE = new BigDecimal("0.50");
+    private static final int MAX_ATTEMPTS = 4;
+    private static final long RETRY_BASE_DELAY_MS = 2_000;
 
     private static final String PROMPT_TEMPLATE = """
             You are an expert financial transaction categorisation assistant. Your task is to categorise a merchant name into a relevant category and sub-category.
@@ -38,6 +41,11 @@ public class RestClientLlmClient implements LlmClient {
             - "category": A broad category, like "Groceries", "Transport", or "Entertainment".
             - "sub_category": A more specific sub-category, like "Supermarket", "Ride-sharing", or "Movies".
             - "confidence": A number between 0.0 and 1.0 indicating your confidence in the categorisation.
+
+            Prefer one of these categories when it fits: "Food & Drink", "Groceries", "Shopping", "Transport",
+            "Travel", "Bills & Utilities", "Entertainment", "Health", "Investments", "Insurance", "Cash",
+            "Transfers", "Education", "Personal Care". A merchant that looks like an individual person's name
+            is a peer-to-peer payment: use "Transfers" / "Personal Transfer".
 
             Do not include any prose, markdown, or any text outside of the JSON object.
 
@@ -98,17 +106,42 @@ public class RestClientLlmClient implements LlmClient {
             log.debug("LLM api-key not configured; fallback skipped for '{}'", merchantName);
             return Optional.empty();
         }
+        for (int attempt = 1; ; attempt++) {
+            try {
+                JsonNode response = restClient.post()
+                        .uri("/models/{model}:generateContent", properties.model())
+                        // Header rather than query string, so the key never lands in access logs.
+                        .header("x-goog-api-key", apiKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(buildRequestBody(merchantName))
+                        .retrieve()
+                        .body(JsonNode.class);
+                return parseGeminiResponse(response, objectMapper);
+            } catch (HttpStatusCodeException ex) {
+                // Free-tier quotas answer 429 (and overloads 503): back off and retry a few times.
+                boolean retryable = ex.getStatusCode().value() == 429 || ex.getStatusCode().value() == 503;
+                if (!retryable || attempt >= MAX_ATTEMPTS) {
+                    log.warn("LLM fallback failed for '{}' after {} attempt(s): HTTP {}",
+                            merchantName, attempt, ex.getStatusCode().value());
+                    return Optional.empty();
+                }
+                if (!sleep(RETRY_BASE_DELAY_MS * (1L << (attempt - 1)))) {
+                    return Optional.empty();
+                }
+            } catch (Exception ex) {
+                log.warn("LLM fallback failed for '{}': {}", merchantName, ex.getMessage());
+                return Optional.empty();
+            }
+        }
+    }
+
+    private static boolean sleep(long millis) {
         try {
-            JsonNode response = restClient.post()
-                    .uri("/models/{model}:generateContent?key={key}", properties.model(), apiKey)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(buildRequestBody(merchantName))
-                    .retrieve()
-                    .body(JsonNode.class);
-            return parseGeminiResponse(response, objectMapper);
-        } catch (Exception ex) {
-            log.warn("LLM fallback failed for '{}': {}", merchantName, ex.getMessage());
-            return Optional.empty();
+            Thread.sleep(millis);
+            return true;
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            return false;
         }
     }
 

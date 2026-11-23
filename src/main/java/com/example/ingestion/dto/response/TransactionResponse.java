@@ -1,6 +1,7 @@
 package com.example.ingestion.dto.response;
 
 import com.example.ingestion.entity.Source;
+import com.example.ingestion.entity.StrategyUsed;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -11,13 +12,16 @@ import java.time.LocalDate;
 public record TransactionResponse(
         Long id,
         String merchantName,
+        String description,
         BigDecimal amount,
         String currency,
         LocalDate transactionDate,
         Source source,
         Instant createdAt,
         String category,
-        String subCategory
+        String subCategory,
+        BigDecimal confidenceScore,
+        StrategyUsed strategyUsed
 ) {
 }
 

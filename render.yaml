@@ -1,0 +1,29 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# Deploys the Docker image as a free web service. The MySQL database is external
+# (e.g. Aiven's free MySQL); set DB_URL / DB_USERNAME / DB_PASSWORD in the dashboard.
+services:
+  - type: web
+    name: passbook-insights
+    runtime: docker
+    plan: free
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: DB_URL
+        sync: false          # jdbc:mysql://<host>:<port>/defaultdb?sslMode=REQUIRED&serverTimezone=UTC&rewriteBatchedStatements=true
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: LLM_API_KEY
+        sync: false          # Gemini API key from https://aistudio.google.com/apikey (optional)
+      # Small instance + free DB: keep connection and thread counts modest.
+      - key: DB_POOL_MAX
+        value: "5"
+      - key: DB_POOL_MIN_IDLE
+        value: "1"
+      - key: CATEGORISATION_POOL_CORE
+        value: "4"
+      - key: CATEGORISATION_POOL_MAX
+        value: "4"
+      - key: JAVA_OPTS
+        value: "-XX:MaxRAMPercentage=70.0 -XX:+UseSerialGC -Xss512k"

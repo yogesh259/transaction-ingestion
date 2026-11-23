@@ -1,0 +1,47 @@
+-- V5: bank-statement (passbook) support.
+-- Keep the raw narration alongside the normalised merchant key.
+ALTER TABLE transactions ADD COLUMN description VARCHAR(512) NULL AFTER merchant_name;
+
+-- Rules for common Indian merchants. Matching is a case-insensitive substring,
+-- so keywords are chosen to be specific (e.g. no bare "OLA" or "JIO").
+-- INSERT IGNORE keeps any rule an admin already created with the same keyword.
+INSERT IGNORE INTO category_rules (keyword, category, sub_category, priority, is_active) VALUES
+    ('ATM CASH WITHDRAWAL', 'Cash',               'ATM Withdrawal',   1,  TRUE),
+    ('SWIGGY INSTAMART',    'Groceries',          'Quick Commerce',   4,  TRUE),
+    ('SWIGGY',              'Food & Drink',       'Delivery',         5,  TRUE),
+    ('ZOMATO',              'Food & Drink',       'Delivery',         5,  TRUE),
+    ('DOMINOS',             'Food & Drink',       'Fast Food',        10, TRUE),
+    ('BLINKIT',             'Groceries',          'Quick Commerce',   8,  TRUE),
+    ('ZEPTO',               'Groceries',          'Quick Commerce',   8,  TRUE),
+    ('BIGBASKET',           'Groceries',          'Online Grocery',   8,  TRUE),
+    ('JIOMART',             'Groceries',          'Online Grocery',   8,  TRUE),
+    ('DMART',               'Groceries',          'Supermarket',      8,  TRUE),
+    ('AVENUE SUPERMARTS',   'Groceries',          'Supermarket',      8,  TRUE),
+    ('ZERODHA',             'Investments',        'Stocks & MF',      12, TRUE),
+    ('GROWW',               'Investments',        'Stocks & MF',      12, TRUE),
+    ('LIC OF INDIA',        'Insurance',          'Life Insurance',   12, TRUE),
+    ('IRCTC',               'Travel',             'Train',            15, TRUE),
+    ('MAKEMYTRIP',          'Travel',             'Bookings',         15, TRUE),
+    ('REDBUS',              'Travel',             'Bus',              15, TRUE),
+    ('INDIGO',              'Travel',             'Flights',          15, TRUE),
+    ('RAPIDO',              'Transport',          'Bike Taxi',        20, TRUE),
+    ('OLA CABS',            'Transport',          'Rideshare',        20, TRUE),
+    ('ANI TECHNOLOGIES',    'Transport',          'Rideshare',        20, TRUE),
+    ('HPCL',                'Transport',          'Fuel',             20, TRUE),
+    ('BPCL',                'Transport',          'Fuel',             20, TRUE),
+    ('IOCL',                'Transport',          'Fuel',             20, TRUE),
+    ('INDIAN OIL',          'Transport',          'Fuel',             20, TRUE),
+    ('FASTAG',              'Transport',          'Tolls',            20, TRUE),
+    ('AIRTEL',              'Bills & Utilities',  'Mobile & Internet',25, TRUE),
+    ('RELIANCE JIO',        'Bills & Utilities',  'Mobile & Internet',25, TRUE),
+    ('BESCOM',              'Bills & Utilities',  'Electricity',      25, TRUE),
+    ('MSEDCL',              'Bills & Utilities',  'Electricity',      25, TRUE),
+    ('TATA POWER',          'Bills & Utilities',  'Electricity',      25, TRUE),
+    ('ELECTRICITY',         'Bills & Utilities',  'Electricity',      26, TRUE),
+    ('APOLLO PHARMACY',     'Health',             'Pharmacy',         25, TRUE),
+    ('PHARMEASY',           'Health',             'Pharmacy',         25, TRUE),
+    ('FLIPKART',            'Shopping',           'Online',           30, TRUE),
+    ('MYNTRA',              'Shopping',           'Fashion',          30, TRUE),
+    ('NYKAA',               'Shopping',           'Beauty',           30, TRUE),
+    ('HOTSTAR',             'Entertainment',      'Streaming',        40, TRUE),
+    ('BOOKMYSHOW',          'Entertainment',      'Movies',           40, TRUE);

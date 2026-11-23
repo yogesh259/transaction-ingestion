@@ -24,6 +24,20 @@ public interface TransactionRepository
             """, nativeQuery = true)
     List<String> findUncategorisedMerchantNames();
 
+    @Query(value = """
+            SELECT COUNT(DISTINCT t.merchant_name)
+            FROM transactions t
+            LEFT JOIN merchant_categories mc ON t.merchant_name = mc.merchant_name
+            WHERE mc.id IS NULL
+            """, nativeQuery = true)
+    long countUncategorisedMerchants();
+
+    @Query(value = "SELECT DISTINCT merchant_name FROM transactions", nativeQuery = true)
+    List<String> findDistinctMerchantNames();
+
+    @Query(value = "SELECT COUNT(DISTINCT merchant_name) FROM transactions", nativeQuery = true)
+    long countDistinctMerchants();
+
     /**
      * Total spend grouped by resolved category, with an explicit
      * {@code "Uncategorised"} bucket for merchants that have no category yet.

@@ -4,8 +4,10 @@ import com.example.ingestion.dto.request.RuleUpsertRequest;
 import com.example.ingestion.dto.response.RuleResponse;
 import com.example.ingestion.entity.CategoryRule;
 import com.example.ingestion.repository.CategoryRuleRepository;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,7 +41,18 @@ public class RuleService {
 
         CategoryRule saved = ruleRepository.save(rule);
         log.info("{} rule id={} keyword='{}'", isNew ? "Created" : "Updated", saved.getId(), saved.getKeyword());
+        return toResponse(saved);
+    }
 
+    /** All rules, highest precedence (lowest priority value) first. */
+    @Transactional(readOnly = true)
+    public List<RuleResponse> list() {
+        return ruleRepository.findAll(Sort.by("priority", "keyword")).stream()
+                .map(RuleService::toResponse)
+                .toList();
+    }
+
+    private static RuleResponse toResponse(CategoryRule saved) {
         return new RuleResponse(
                 saved.getId(),
                 saved.getKeyword(),

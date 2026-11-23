@@ -12,6 +12,9 @@ import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -25,9 +28,25 @@ import org.springframework.web.bind.annotation.RestController;
 public class TransactionController {
 
     private final TransactionService transactionService;
+    private final boolean resetEnabled;
 
-    public TransactionController(TransactionService transactionService) {
+    public TransactionController(TransactionService transactionService,
+                                 @Value("${app.reset-enabled:true}") boolean resetEnabled) {
         this.transactionService = transactionService;
+        this.resetEnabled = resetEnabled;
+    }
+
+    /**
+     * Deletes all transactions and merchant categories so the data set can be
+     * started fresh. Disabled with {@code app.reset-enabled=false}.
+     */
+    @DeleteMapping
+    public ResponseEntity<Void> deleteAll() {
+        if (!resetEnabled) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        transactionService.deleteAll();
+        return ResponseEntity.noContent().build();
     }
 
     /**

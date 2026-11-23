@@ -43,13 +43,23 @@ public class MerchantCategoriser {
      */
     @Transactional
     public boolean categorise(String merchantName, List<CategoryRule> activeRules) {
+        return categorise(merchantName, activeRules, true);
+    }
+
+    /**
+     * As {@link #categorise(String, List)}, but the LLM fallback is only used when
+     * {@code allowFallback} is true (and it is enabled in configuration). Used by
+     * re-categorisation to re-apply rules without re-querying the LLM.
+     */
+    @Transactional
+    public boolean categorise(String merchantName, List<CategoryRule> activeRules, boolean allowFallback) {
         if (merchantName == null || merchantName.isBlank()) {
             log.debug("Skipping blank merchant name");
             return false;
         }
 
         Optional<CategorisationResult> result = ruleBasedStrategy.match(merchantName, activeRules);
-        if (result.isEmpty() && fallbackEnabled) {
+        if (result.isEmpty() && fallbackEnabled && allowFallback) {
             result = fallbackStrategy.categorise(merchantName);
         }
         if (result.isEmpty()) {

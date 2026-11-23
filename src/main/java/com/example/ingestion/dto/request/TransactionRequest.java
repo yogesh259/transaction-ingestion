@@ -7,6 +7,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PastOrPresent;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
@@ -17,6 +18,7 @@ import java.time.LocalDate;
 public record TransactionRequest(
 
         @NotBlank(message = "must not be blank")
+        @Size(max = 512, message = "must be at most 512 characters")
         String merchantName,
 
         @NotNull(message = "is required")
